@@ -19,24 +19,7 @@ class Logic
         optimization = (*config)("Bot", "Optimization");
     }
 
-    std::vector<move_pos> find_best_turns(const bool color) {
-    next_best_state.clear(); // очищаем массив состояний
-    next_move.clear(); // очищаем массив ходов
-
-    // ищем первый лучший ход с использованием текущего состояния доски
-    find_first_best_turn(board->get_board(), color, -1, -1, 0);
-
-    std::vector<move_pos> result; // результативный вектор для хранения последовательности ходов
-    int current_state = 0; // текущий индекс состояния
-
-    // пока есть состояния и текущий ход не завершен
-    while (current_state != -1 && next_move[current_state].x != -1) {
-        result.emplace_back(next_move[current_state]); // добавляем ход в результат
-        current_state = next_best_state[current_state]; // переходим к следующему состоянию
-    }
-
-    return result; // возвращаем последовательность лучших ходов
-}
+   
 
 
 private:
@@ -115,124 +98,7 @@ double calc_score(const vector<vector<POS_T>> &mtx, const bool first_bot_color) 
     return (b + bq * q_coef) / (w + wq * q_coef);
 }
 
-// функция для поиска первого лучшего хода, используя альфа-бета отсечение
-double find_first_best_turn(const std::vector<std::vector<POS_T>>& mtx, 
-                            const bool color, 
-                            const POS_T x, 
-                            const POS_T y, 
-                            size_t state, 
-                            double alpha = -1) {
-    // инициализация нового состояния и хода
-    next_best_state.push_back(-1); // индекс следующего лучшего состояния
-    next_move.emplace_back(-1, -1, -1, -1); // добавляем "пустой" ход
 
-    double best_score = -1; // начальная лучшая оценка
-    
-    // если это не начальное состояние, ищем возможные ходы
-    if (state != 0) {
-        find_turns(x, y, mtx);
-    }
-
-    // сохраняем текущие ходы и информацию об обязательных ударах
-    const auto available_moves = turns; 
-    const bool has_mandatory_beats = have_beats; 
-
-    // если ударов нет, переходим к следующему игроку
-    if (!has_mandatory_beats && state != 0) {
-        return find_best_turns_rec(mtx, 1 - color, 0, alpha);
-    }
-
-    // итерация по всем возможным ходам
-    for (const auto& move : available_moves) {
-        size_t next_state_index = next_move.size(); // индекс следующего состояния
-        double move_score; // оценка текущего хода
-
-        if (has_mandatory_beats) {
-            // выполняем обязательный удар и рекурсивно ищем дальнейшие ходы
-            move_score = find_first_best_turn(make_turn(mtx, move), color, move.x2, move.y2, next_state_index, best_score);
-        } else {
-            // оцениваем ход для следующего игрока
-            move_score = find_best_turns_rec(make_turn(mtx, move), 1 - color, 0, best_score);
-        }
-
-        // обновляем лучшую оценку, если нашли более выгодный ход
-        if (move_score > best_score) {
-            best_score = move_score;
-            next_best_state[state] = (has_mandatory_beats ? static_cast<int>(next_state_index) : -1);
-            next_move[state] = move;
-        }
-    }
-    return best_score; // возвращаем лучшую оценку
-}
-
-// рекурсивная функция для поиска лучшего хода (альфа-бета отсечение)
-double find_best_turns_rec(const std::vector<std::vector<POS_T>>& mtx, 
-                           const bool color, 
-                           const size_t depth, 
-                           double alpha = -1, 
-                           double beta = INF + 1, 
-                           const POS_T x = -1, 
-                           const POS_T y = -1) {
-    // проверка глубины рекурсии
-    if (depth == Max_depth) {
-        return calc_score(mtx, (depth % 2 == color)); // оцениваем доску
-    }
-
-    // определяем возможные ходы
-    if (x != -1) {
-        find_turns(x, y, mtx); // ищем ходы для конкретной позиции
-    } else {
-        find_turns(color, mtx); // ищем ходы для текущего игрока
-    }
-
-    const auto available_moves = turns; // список доступных ходов
-    const bool has_mandatory_beats = have_beats; // проверяем наличие обязательных ударов
-
-    // если нет обязательных ударов, переходим к следующему игроку
-    if (!has_mandatory_beats && x != -1) {
-        return find_best_turns_rec(mtx, 1 - color, depth + 1, alpha, beta);
-    }
-
-    // если ходов больше нет, возвращаем значение на основе игрока
-    if (available_moves.empty()) {
-        return (depth % 2 == 0) ? INF : 0; // выигрыш для одного игрока и проигрыш для другого
-    }
-
-    // инициализируем оценки для альфа-бета отсечения
-    double min_score = INF + 1;
-    double max_score = -1;
-
-    // перебираем возможные ходы
-    for (const auto& move : available_moves) {
-        double move_score;
-
-        if (!has_mandatory_beats && x == -1) {
-            // оцениваем ход для следующего игрока
-            move_score = find_best_turns_rec(make_turn(mtx, move), 1 - color, depth + 1, alpha, beta);
-        } else {
-            // выполняем ход с ударом и продолжаем искать
-            move_score = find_best_turns_rec(make_turn(mtx, move), color, depth, alpha, beta, move.x2, move.y2);
-        }
-
-        // обновляем минимальную и максимальную оценки
-        min_score = std::min(min_score, move_score);
-        max_score = std::max(max_score, move_score);
-
-        // выполняем альфа-бета отсечение
-        if (depth % 2 == 0) {
-            beta = std::min(beta, min_score); // минимизируем для текущего игрока
-        } else {
-            alpha = std::max(alpha, max_score); // максимизируем для текущего игрока
-        }
-
-        if (alpha >= beta) {
-            return (depth % 2 == 0) ? min_score : max_score; // раннее завершение
-        }
-    }
-
-    // возвращаем результат в зависимости от хода
-    return (depth % 2 == 0) ? min_score : max_score;
-}
 
 public:
     // вызывает метод для поиска возможных ходов, используя цвет
